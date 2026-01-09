@@ -9,6 +9,7 @@ from .serializers import (
     BookingSerializer, BookingCreateSerializer,
     BookingUpdateSerializer, CancelBookingSerializer
 )
+from calendar_scheduler.integrations.email_service import EmailService
 
 
 class BookingListCreateView(generics.ListCreateAPIView):
@@ -74,6 +75,13 @@ class BookingListCreateView(generics.ListCreateAPIView):
             print(f"Error in calendar integration: {str(e)}")
             # Don't fail the booking if calendar fails
         
+        # Send confirmation emails
+        try:
+            EmailService.send_booking_confirmation_email(booking)
+        except Exception as e:
+            print(f"Error sending confirmation email: {str(e)}")
+            # Don't fail the booking if email fails
+        
         # Return full booking data using BookingSerializer
         response_serializer = BookingSerializer(booking)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -130,7 +138,13 @@ class CancelBookingView(APIView):
         booking.save()
         
         # TODO: Delete Google Calendar event
-        # TODO: Send cancellation email
+        
+        # Send cancellation emails
+        try:
+            EmailService.send_booking_cancellation_email(booking)
+        except Exception as e:
+            print(f"Error sending cancellation email: {str(e)}")
+            # Don't fail the cancellation if email fails
         
         return Response({
             'message': 'Booking cancelled successfully',
@@ -157,13 +171,29 @@ class RescheduleBookingView(APIView):
                 'error': 'Only the booking owner can reschedule'
             }, status=status.HTTP_403_FORBIDDEN)
         
+        # Store old values for email notification
+        old_date = booking.date
+        old_start_time = booking.start_time
+        old_end_time = booking.end_time
+        
         # Update booking
         serializer = BookingUpdateSerializer(booking, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated_booking = serializer.save()
         
         # TODO: Update Google Calendar event
-        # TODO: Send reschedule notification email
+        
+        # Send reschedule notification emails
+        try:
+            EmailService.send_booking_reschedule_email(
+                updated_booking, 
+                old_date, 
+                old_start_time, 
+                old_end_time
+            )
+        except Exception as e:
+            print(f"Error sending reschedule email: {str(e)}")
+            # Don't fail the reschedule if email fails
         
         return Response({
             'message': 'Booking rescheduled successfully',
